@@ -11,5 +11,7 @@ end
 spline.SofT = csapi(spline.discrete.ts, spline.discrete.arclength);
 % Fit spline to t(arcLength):
 spline.TofS = csapi(spline.discrete.arclength, spline.discrete.ts);
-
+% Build derivatives:
+spline.TPerS = fnder(spline.TofS, 1);
+spline.SPerT = fnder(spline.SofT, 1);
 end

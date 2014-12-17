@@ -1,6 +1,6 @@
 % Computes position and position derivative on the trajectory w.r.t. the
 % given total arc length.
-function [p, dpds] = trajectory_get( traj, s)
+function [p, dpds, ddpdds, ddpdds_sign, kappa] = trajectory_get( traj, s)
 
 % Figure out on which spline we are:
 sTotal = 0;
@@ -15,20 +15,21 @@ for i=1:length(traj.splines)
     end
 end
 
+if isempty(spline)
+    error([mfilename '>> Given arc length exceeds the maximum arc length of this trajectory, returning end point'])
+    spline = traj.splines{end};
+    sLocal = spline.discrete.arclength(end);
+end
+
 % Get spline parameter t
 t = fnval(spline.TofS, sLocal);
-% Compute point
-p = trajectory_evaluateBezier(spline, t);
-% Do quick and dirty finite difference approximation of spline derivative
-% w.r.t. s:
-% Decide where to step:
-ds = traj.resolution;
-if spline.discrete.arclength(end) - sLocal > ds
-   ds = traj.resolution;
-else
-   ds = - traj.resolution;
-end
-t1 = fnval(spline.TofS, sLocal + ds);
-p1 = trajectory_evaluateBezier(spline, t1);
-dpds = (p1-p)/ds;
+% Compute point, first and second derivative w.r.t. s:
+[p, dpdt, dpddt] = trajectory_evaluateBezier(spline, t);
+
+TperS = fnval(spline.TPerS, sLocal);
+dpds = TperS * dpdt;
+ddpdds = TperS * dpddt;
+
+% Figure out sign of curvature in NED frame. 
+ddpdds_sign = trajectory_getHorizontalCurvatureSign(dpds, ddpdds);
 end

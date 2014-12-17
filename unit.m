@@ -26,7 +26,7 @@ vector = vector./norm(vector);
 
 %Check if the result is NaN
 if sum(isnan(vector)) >= 1
-    error([mfilename '>> The vector' num2str(inVector) ' is ill-conditioned or dividing by zero with a result of ', num2str(vector)]);
+    error([mfilename '>> The vector' num2str(vector) ' is ill-conditioned or dividing by zero with a result of ', num2str(vector)]);
 end
 
 %Check if the result is illogical, or has an error

@@ -1,4 +1,4 @@
-function traj = trajectory_smooth( traj , maxc2)
+function traj = trajectory_smooth( traj , envelope)
 %TRAJECTORY_SMOOTH Accepts a trajectory structure and updates the spline
 %trajectory based on the waypoint trajectory.
 
@@ -10,18 +10,18 @@ for i=2:length(traj.waypoints)-1
     % Check if there are no waypoints in exactly the same place:
     if norm(traj.waypoints{i-1} - traj.waypoints{i}) < traj.resolution
         isvalid = false;
-        disp([mfilename 'There are at least two waypoints extremely close to one another,'...
-                        'aborting trajectory smoothing.']);
+        error([mfilename 'There are at least two waypoints extremely close to one another,'...
+            'aborting trajectory smoothing.']);
     end
-    % Check if there are any three collinear waypoints, and, if so, remove
-    % the middle one:
+    % Check if there are any three collinear and thus redundant waypoints,
+    % and, if so, remove the middle one:
     if max(abs(unit(traj.waypoints{i} - traj.waypoints{i-1}) - unit(traj.waypoints{i+1} - traj.waypoints{i}))) < traj.resolution
-        disp([mfilename '>> Collinear waypoints, removing the middle one']);
+        disp([mfilename '>> Three collinear waypoints, removing the middle one']);
         isvalid = false;
-    end    
+    end
     
     if isvalid
-        validWP{end+1} = traj.waypoints{i};        
+        validWP{end+1} = traj.waypoints{i};
     end
 end
 validWP{end+1} = traj.waypoints{end};
@@ -83,7 +83,7 @@ traj.splines = gapless;
 % control points of a spline and the vector formed by the first two control
 % points of the following spline are collinear and pointing in opposite
 % directions:
-% 
+%
 for i=1:length(traj.splines)-1
     thisspline = traj.splines{i};
     nextspline = traj.splines{i+1};
@@ -92,16 +92,76 @@ for i=1:length(traj.splines)-1
     % TODO Hugely arbitrary parameter to check for collinearity here; there
     % sure are better ways to do this.
     if norm(uthis + unext) > 1e6 * eps
-       error([mfilename '>> Smoothing splines overlap, increase space or allow for smaller radii. Aborting.']); 
+        error([mfilename '>> Smoothing splines overlap, increase space or allow for smaller radii. Aborting.']);
     end
 end
 
-disp([mfilename '>> Trajectory smoothing went just fine.']); 
+disp([mfilename '>> Trajectory smoothing went just fine.']);
 
+
+% Builds a smoothing spline between three consecutive waypoints,
+% checking for aerodynamic constraints.
+    function [s1, s2] = smoothSegment(p1, p2, p3)
+        % Build initial spline
+        % TODO Use approximate analytic solution of maximum curvature
+        % parameter as initial value to accelerate convergence.
+        % c2max = 0.5:-0.05:0.1;
+        c2max = 0.05;
+        deltalift = zeros(size(c2max));
+        
+        for ic2max=1:length(c2max);
+            [s1, s2] = buildSegment(p1, p2, p3, c2max(ic2max));
+            segment.splines{1} = s1;
+            segment.splines{2} = s2;
+            deltalift(ic2max) = getLiftForceDelta(segment);
+        end
+        bp = 0;
+        function deltaLiftForce = getLiftForceDelta(seg)
+            env = envelope;
+            % Sample splines, compute forces for each sample,
+            for ispline=1:2
+                seg.splines{ispline} = trajectory_parameterizeWithArcLength(seg.splines{ispline});
+                ds = seg.splines{ispline}.discrete.arclength(end)/100;
+                s = 0:ds:seg.splines{ispline}.discrete.arclength(end)/2;
+                seg.resolution = ds;
+                cost = s;
+                for iS=1:length(s)
+                    [p, dp, ddp, ~] = trajectory_get(seg, s(iS));
+                    % Build unit vectors of local coordinate system:
+                    uX = unit(dp);
+                    uZ = unit(cross(unit(p3-p2), unit(p1-p2)));
+                    uY = unit(cross(uZ, uX));
+                    M_ned2sframe = [ uX uY uZ ]';
+                    FG_ned = [0 0 env.m_max * env.g]';
+                    % There we go: the gravitaional force in the local spline
+                    % system:
+                    FG_sframe = M_ned2sframe * FG_ned;
+                    % Compute centrifugal force in local spline system:
+                    r = abs(1/norm(ddp));
+                    
+                    FC_sframe = [0;
+                        env.m_max * env.v_max^2 / r;
+                        0];
+                    % Compute maximum lift force:
+                    FL_max = env.CL_max * env.S_min * env.v_max^2 * 0.5 * env.rho_min;
+                    % Rotate by local bank angle to local spline frame:
+                    phi_local = acos(FG_sframe(3)/FL_max);
+                    dcm_tframe2sframe = angle2dcm(0, 0, -phi_local, 'ZYX');
+                    FL_max_sframe = dcm_tframe2sframe * [0; 0; -FL_max];
+                    sumOfForces_sframe = FC_sframe + FG_sframe + FL_max_sframe;
+                    sumOfForces_tframe = dcm_tframe2sframe' * sumOfForces_sframe;
+                    % Get resulting force in lift direction:
+                    cost(iS) = abs(sumOfForces_tframe(3));
+                end
+                costMax(ispline) = max(cost);
+            end
+            deltaLiftForce = max(costMax);
+        end
+    end
 
 % Accepts three consecutive waypoints, builds the smoothing spline segments
 % that connects the three and returns them
-    function [s1, s2] = smoothSegment(p1, p2, p3)
+    function [s1, s2] = buildSegment(p1, p2, p3, maxc2)
         p1_3D = p1;
         p2_3D = p2;
         p3_3D = p3;
@@ -110,8 +170,9 @@ disp([mfilename '>> Trajectory smoothing went just fine.']);
         ux = unit(p2_3D-p1_3D);
         uz = unit(cross(ux, unit(p3_3D-p2_3D)));
         uy = unit(cross(uz, ux));
-        % Transformation local2D <-> global 3D:
+        % Transformation matrix local2D <-> global 3D:
         T = [[ux; 0] [uy; 0] [uz; 0] [p1_3D; 1]];
+        
         % Rotate points from 3D to local 2D:
         p1_2D = fcn3Dto2D(p1_3D);
         p2_2D = fcn3Dto2D(p2_3D);
@@ -150,6 +211,30 @@ disp([mfilename '>> Trajectory smoothing went just fine.']);
         s2 = spline_build(fcn2Dto3D(E3_2D), fcn2Dto3D(E2_2D), ...
             fcn2Dto3D(E1_2D), fcn2Dto3D(E0_2D));
         
+        % Computes the maximum feasible curvature on this spline segment
+        % based on the aircraft's performance limits:
+        function cmax = getMaxCurvature()
+            % Compute maximum lift force:
+            env = envelope;
+            FL_max = env.CL_max * env.S_min * env.v_max^2 * 0.5 * env.rho_min;
+            % Compute gravitational force in spline system:
+            % Build rotation matrix from ned frame to spline frame from unit
+            % vectors of spline frame in NED frame:
+            pa = p2_3D + unit(p1_3D-p2_3D);
+            pb = p2_3D + unit(p3_3D-p2_3D);
+            uX = unit(pb-pa);
+            uZ = unit(cross(unit(p3_3D-p2_3D), unit(p1_3D-p2_3D)));
+            uY = unit(cross(uZ, uX));
+            M_ned2sframe = [ uX uY uZ ]';
+            FG_ned = [0 0 env.m_max * env.g]';
+            FG_sframe = M_ned2sframe * FG_ned;
+            % Compute bank angle in spline frame:
+            phi_local = acos(FG_sframe(3)/FL_max);
+            % Compute minimal turn radius:
+            r = (1/(FL_max * sin(phi_local) + FG_sframe(2))) * env.v_max / env.m_max;
+            cmax = 1/r;
+        end
+        
         % Rotates and translates a given 3D point to the local 2D system
         % used to build the spline.
         function p2D = fcn3Dto2D(p3D)
@@ -183,11 +268,11 @@ disp([mfilename '>> Trajectory smoothing went just fine.']);
             plotPoint(E1_2D, 'E1',3);
             plotPoint(E2_2D, 'E2',3);
             plotPoint(E3_2D, 'E3',3);
-            arrow(p2_2D, p2_2D+u1);
-            arrow(p2_2D, p2_2D+u2);
+            % arrow(p2_2D, p2_2D+u1);
+            % arrow(p2_2D, p2_2D+u2);
             %annotation('arrows',[p2_2D(1) u1(1)],[p2_2D(2) u1(2)]);
             
-            plotbrowser on;
+            % plotbrowser on;
             function plotPoint(point, name, color)
                 plot(point(1), point(2), 'Displayname', name, 'Marker', 'o', 'color', col(color, :));
             end
