@@ -55,53 +55,38 @@ if optionisset(options, 'firstderivativevisible') || optionisset(options, 'secon
     % derivatives.
     ds = 1;
     p = zeros(ceil(traj.sTotal/ds), 3);
-    dp = zeros(ceil(traj.sTotal/ds), 3);
-    ddp = zeros(ceil(traj.sTotal/ds), 3);
+    uTangent = zeros(ceil(traj.sTotal/ds), 3);
+    Kappa = zeros(ceil(traj.sTotal/ds), 3);
+    kappa = zeros(ceil(traj.sTotal/ds), 1);
     s = 0:ds:traj.sTotal;
     for i = 1:length(s)
-        [p(1, :), dp(1, :), ddp(1, :)] = trajectory_get( traj, s(i));
+        [p(i, :), uTangent(i, :), Kappa(i, :)] = trajectory_get( traj, s(i));
     end
     
-    if optionisset(options, 'firstderivativevisible')
-        quiver3(p(:, 1),p(:, 2),p(:, 3),dp(:, 1),dp(:, 2),dp(:, 3))
+    if optionisset(options, 'tangentvisible')
+        quiver3(p(:, 1),p(:, 2),p(:, 3),uTangent(:, 1),uTangent(:, 2),uTangent(:, 3))
     end
     
-    if optionisset(options, 'secondderivativevisible')
-        quiver3(p(:, 1),p(:, 2),p(:, 3),ddp(:, 1),ddp(:, 2),ddp(:, 3))
-    end
-    
+    if optionisset(options, 'curvaturevectorvisible')
+        quiver3(p(:, 1),p(:, 2),p(:, 3),Kappa(:, 1),Kappa(:, 2),Kappa(:, 3))
+    end    
     xlabel 'x'
     ylabel 'y'
     zlabel 'z'
     
     axs = ['x', 'y', 'z'];
-    
-    % Separate plots for derivatives?
-    if optionisset(options, 'plotfirstderivativeseparately')
-        dpFigure = figure;
-        for i=1:3
-            subplot(3,1,i);
-            plot(s, dp(:, i));
-            ylabel(['dp/ds ' axs(i)]);
-        end
+            
+    % Optional: Plot curvature:
+    if optionisset(options, 'plotcurvatureseparately')
+        % Compute curvature:
+        kappa = Kappa(:, 1).^2 + Kappa(:, 2).^2 + Kappa(:, 3).^2;
+        kappa = kappa .^ 0.5;
+        kappafigure = figure;
+        plot(s, kappa);
+        ylabel('curvature kappa(s)');
         xlabel 's'
     end
     
-    if optionisset(options, 'plotsecondderivativeseparately')
-        dppfigure = figure;
-        for i=1:3
-            subplot(4,1,i);
-            plot(s, ddp(:, i));
-            ylabel(['ddp/ds ' axs(i)]);
-        end
-        % Compute total acceleration
-        acc = 
-        subplot(4,1,4);
-        plot(s, norm(ddp(:, i)));
-        ylabel('|ddp/ds|');
-        
-        xlabel 's'
-    end
     
 end
 
@@ -112,9 +97,9 @@ if optionisset(options, 'plotosculatingcircle') && optionexists(options, 'sCircl
     if options.sCircle > traj.sTotal
         options.sCircle = traj.sTotal;
     end
-    [p, dp, ddp] = trajectory_get( traj, options.sCircle);
-    r = 1/norm(ddp);
-    center = p + r * fflib_normalize(cross(dp, [0 0 -1]'));
+    [p, ~, Kappa] = trajectory_get( traj, options.sCircle);
+    r = 1/norm(Kappa);
+    center = p + r * fflib_normalize(Kappa);
     hold on
     th = 0:pi/50:2*pi;
     x = r * cos(th) + center(1);

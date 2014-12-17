@@ -1,6 +1,9 @@
-% Computes position and position derivative on the trajectory w.r.t. the
-% given total arc length.
-function [p, dpds, ddpdds, ddpdds_sign, kappa] = trajectory_get( traj, s)
+% Computes 
+% - position 
+% - a unit vector tangent to the spline
+% - the curvature vector 
+%  w.r.t. the  given total arc length.
+function [p, uTangent, Kappa] = trajectory_get( traj, s)
 
 % Figure out on which spline we are:
 sTotal = 0;
@@ -26,10 +29,10 @@ t = fnval(spline.TofS, sLocal);
 % Compute point, first and second derivative w.r.t. s:
 [p, dpdt, dpddt] = trajectory_evaluateBezier(spline, t);
 
-TperS = fnval(spline.TPerS, sLocal);
-dpds = TperS * dpdt;
-ddpdds = TperS * dpddt;
+kappa = cross(dpdt, dpddt) / norm(dpdt)^3;
+Kappa = cross(kappa, unit(dpdt));
+
+uTangent = unit(dpdt);
 
 % Figure out sign of curvature in NED frame. 
-ddpdds_sign = trajectory_getHorizontalCurvatureSign(dpds, ddpdds);
 end

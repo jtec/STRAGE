@@ -1,4 +1,5 @@
-function traj = trajectory_smooth( traj , envelope)
+function traj = trajectory_smooth( traj, envelope, c2maxFix)
+
 %TRAJECTORY_SMOOTH Accepts a trajectory structure and updates the spline
 %trajectory based on the waypoint trajectory.
 
@@ -106,7 +107,12 @@ disp([mfilename '>> Trajectory smoothing went just fine.']);
         % TODO Use approximate analytic solution of maximum curvature
         % parameter as initial value to accelerate convergence.
         % c2max = 0.5:-0.05:0.1;
-        c2max = 0.05;
+        % If maximum curvature is provides, use it:
+        if nargin > 2
+            c2max = c2maxFix;
+        else
+            c2max = 0.05;
+        end
         deltalift = zeros(size(c2max));
         
         for ic2max=1:length(c2max);
@@ -126,9 +132,9 @@ disp([mfilename '>> Trajectory smoothing went just fine.']);
                 seg.resolution = ds;
                 cost = s;
                 for iS=1:length(s)
-                    [p, dp, ddp, ~] = trajectory_get(seg, s(iS));
+                    [p, uTangent, Kappa] = trajectory_get(seg, s(iS));
                     % Build unit vectors of local coordinate system:
-                    uX = unit(dp);
+                    uX = unit(uTangent);
                     uZ = unit(cross(unit(p3-p2), unit(p1-p2)));
                     uY = unit(cross(uZ, uX));
                     M_ned2sframe = [ uX uY uZ ]';
@@ -137,7 +143,7 @@ disp([mfilename '>> Trajectory smoothing went just fine.']);
                     % system:
                     FG_sframe = M_ned2sframe * FG_ned;
                     % Compute centrifugal force in local spline system:
-                    r = abs(1/norm(ddp));
+                    r = abs(1/norm(Kappa));
                     
                     FC_sframe = [0;
                         env.m_max * env.v_max^2 / r;
