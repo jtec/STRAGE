@@ -2,7 +2,7 @@ function traj = trajectory_display( traj, options)
 %TRAJECTORY_DISPLAY Plots a given smoothed trajectory in 3D.
 close('all');
 % Plot colors:
-col = distinguishable_colors(3*length(traj.waypoints));
+col = linspecer(3*length(traj.waypoints));
 % Figures:
 mainfigure = figure;
 figure(mainfigure);

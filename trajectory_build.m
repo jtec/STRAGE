@@ -7,4 +7,6 @@ function traj = trajectory_build( wp0 )
 traj.waypoints{1} = wp0;
 % Position resolution: 1mm
 traj.resolution = 1e-3;
+% Debug output disabled by default:
+traj.news = 'minimal';
 end

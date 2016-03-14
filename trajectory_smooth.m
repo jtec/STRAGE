@@ -2,25 +2,21 @@ function traj = trajectory_smooth( traj, envelope, c2maxFix)
 
 %TRAJECTORY_SMOOTH Accepts a trajectory structure and updates the spline
 %trajectory based on the waypoint trajectory.
+output_verbose = strcmpi(traj.news, 'verbose');
+output_minimal = strcmpi(traj.news, 'minimal');
 
 % Check if input trajectory is valid:
 validWP = {};
 validWP{1} = traj.waypoints{1};
+% FIXME Indexing like this keeps somewayoints from being checked!
 for i=2:length(traj.waypoints)-1
     isvalid = true;
-    % Check if there are no waypoints in exactly the same place:
-    if norm(traj.waypoints{i-1} - traj.waypoints{i}) < traj.resolution
+    % Check if there are any consecutive waypoints in exactly the same place:
+    if norm(traj.waypoints{i+1} - traj.waypoints{i}) < traj.resolution
         isvalid = false;
         error([mfilename 'There are at least two waypoints extremely close to one another,'...
             'aborting trajectory smoothing.']);
     end
-    % Check if there are any three collinear and thus redundant waypoints,
-    % and, if so, remove the middle one:
-    if max(abs(unit(traj.waypoints{i} - traj.waypoints{i-1}) - unit(traj.waypoints{i+1} - traj.waypoints{i}))) < traj.resolution
-        disp([mfilename '>> Three collinear waypoints, removing the middle one']);
-        isvalid = false;
-    end
-    
     if isvalid
         validWP{end+1} = traj.waypoints{i};
     end
@@ -31,8 +27,31 @@ traj.waypoints = validWP;
 
 traj.splines = {};
 % Iterate over waypoints and build spline segments:
+dwp = [];
 for i=1:length(traj.waypoints)-2
-    [s1, s2] = smoothSegment(traj.waypoints{i}, traj.waypoints{i+1}, traj.waypoints{i+2});
+    % Check if the waypoints are collinear:
+    if max(abs(unit(traj.waypoints{i+1} - traj.waypoints{i}) - unit(traj.waypoints{i+2} - traj.waypoints{i}))) < traj.resolution
+        disp([mfilename '>> Three collinear waypoints, not smoothing']);
+    else
+        if output_verbose
+            disp([mfilename '>> Smoothing corner ' num2str(i) '/' num2str(length(traj.waypoints)-2)]);
+        end
+        [s1, s2] = smoothSegment(traj.waypoints{i}, traj.waypoints{i+1}, traj.waypoints{i+2});
+        traj.splines{end+1} = s1;
+        traj.splines{end+1} = s2;
+    end
+end
+
+% Detect closed trajectory: if the last and any of the other waypoints are close,
+% build additional spline to transition between the end and this waypoint:
+dwp = [];
+for i=1:length(traj.waypoints)-1
+    dwp(end+1) = norm(traj.waypoints{i} - traj.waypoints{end});
+end
+[minD, ind] = min(dwp);
+if minD < traj.resolution
+    error([mfilename '>> Closed trajectories not implemented, avoid putting more than on waypoint too close (< trajectory.resolution) together.']);
+    [s1, s2] = smoothSegment(traj.waypoints{end-1}, traj.waypoints{end}, traj.waypoints{ind+1});
     traj.splines{end+1} = s1;
     traj.splines{end+1} = s2;
 end
@@ -41,50 +60,66 @@ end
 gapless = {};
 % Check for gap between the first waypoint and the first control point
 % of the first spline:
-distance = norm(traj.splines{i}.p1 - traj.waypoints{1});
-if distance > traj.resolution
-    startpoint = traj.waypoints{1};
-    endpoint = traj.splines{1}.p1;
-    controlpoint = startpoint + 0.5 .* (endpoint - startpoint);
-    line = spline_build(startpoint, controlpoint, controlpoint, endpoint);
-    gapless{end+1} = line;
-end
-for i=1:length(traj.splines)-1
-    % In any case, the first spline can already be added to the gapless
-    % trajectory:
-    gapless{end+1} = traj.splines{i};
-    % If the distance between the last control point of this spline and the
-    % first one of the following one exceeds the coordinate resolution,
-    % connect the two splines by a straight line:
-    distance = norm(traj.splines{i}.p4 - traj.splines{i+1}.p1);
+if length(traj.waypoints) > 2
+    distance = norm(traj.splines{i}.p1 - traj.waypoints{1});
     if distance > traj.resolution
-        startpoint = traj.splines{i}.p4;
-        endpoint = traj.splines{i+1}.p1;
+        startpoint = traj.waypoints{1};
+        endpoint = traj.splines{1}.p1;
         controlpoint = startpoint + 0.5 .* (endpoint - startpoint);
         line = spline_build(startpoint, controlpoint, controlpoint, endpoint);
         gapless{end+1} = line;
     end
+    for i=1:length(traj.splines)-1
+        % In any case, the first spline can already be added to the gapless
+        % trajectory:
+        gapless{end+1} = traj.splines{i};
+        % If the distance between the last control point of this spline and the
+        % first one of the following one exceeds the coordinate resolution,
+        % connect the two splines by a straight line:
+        distance = norm(traj.splines{i}.p4 - traj.splines{i+1}.p1);
+        if distance > traj.resolution
+            startpoint = traj.splines{i}.p4;
+            endpoint = traj.splines{i+1}.p1;
+            controlpoint = startpoint + 0.5 .* (endpoint - startpoint);
+            line = spline_build(startpoint, controlpoint, controlpoint, endpoint);
+            gapless{end+1} = line;
+        end
+    end
+    gapless{end+1} = traj.splines{end};
+    % Check for gap between the last control point of the last spline and
+    % the last waypoint:
+    distance = norm(traj.splines{end}.p4 - traj.waypoints{end});
+    if distance > traj.resolution
+        startpoint = traj.splines{end}.p4;
+        endpoint = traj.waypoints{end};
+        controlpoint = startpoint + 0.5 .* (endpoint - startpoint);
+        line = spline_build(startpoint, controlpoint, controlpoint, endpoint);
+        gapless{end+1} = line;
+    end
+    % If there are only two waypoints, connect them by a straight line spline:
+else
+    distance = norm(traj.waypoints{1} - traj.waypoints{2});
+    if distance > traj.resolution
+        startpoint = traj.waypoints{1};
+        endpoint = traj.waypoints{2};
+        controlpoint = startpoint + 0.5 .* (endpoint - startpoint);
+        line = spline_build(startpoint, controlpoint, controlpoint, endpoint);
+        gapless{end+1} = line;
+    end
+    
 end
-gapless{end+1} = traj.splines{end};
-% Check for gap between the last control point of the last spline and
-% the last waypoint:
-distance = norm(traj.splines{end}.p4 - traj.waypoints{end});
-if distance > traj.resolution
-    startpoint = traj.splines{end}.p4;
-    endpoint = traj.waypoints{end};
-    controlpoint = startpoint + 0.5 .* (endpoint - startpoint);
-    line = spline_build(startpoint, controlpoint, controlpoint, endpoint);
-    gapless{end+1} = line;
-end
+
 traj.splines = gapless;
 
 % Do Sanity checks:
+% TODO This should be done during smoothing.
 % Check if there are overlaps between splines, leading to infeasible turns.
 % This can be verified by checking if the vectors formed by the last two
 % control points of a spline and the vector formed by the first two control
 % points of the following spline are collinear and pointing in opposite
 % directions:
 %
+success = true;
 for i=1:length(traj.splines)-1
     thisspline = traj.splines{i};
     nextspline = traj.splines{i+1};
@@ -93,12 +128,19 @@ for i=1:length(traj.splines)-1
     % TODO Hugely arbitrary parameter to check for collinearity here; there
     % sure are better ways to do this.
     if norm(uthis + unext) > 1e6 * eps
-        error([mfilename '>> Smoothing splines overlap, increase space or allow for smaller radii. Aborting.']);
+        disp([mfilename '>> Smoothing splines overlap, increase space or allow for smaller radii.' ... 
+                            ' Removing all following splines.']);
+        traj.splines = traj.splines(1:i);
+        success = false;
+        break;
     end
 end
 
-disp([mfilename '>> Trajectory smoothing went just fine.']);
-
+if success
+   disp([mfilename '>> Trajectory smoothing went just fine.']); 
+else
+   disp([mfilename '>> Trajectory smoothing failed, have a look at error messages.']);     
+end
 
 % Builds a smoothing spline between three consecutive waypoints,
 % checking for aerodynamic constraints.

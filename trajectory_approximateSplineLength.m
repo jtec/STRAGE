@@ -12,8 +12,9 @@ spline.discrete.arclength = 0;
 % For rather straight splines, the recursive strategy might create only a
 % small number of points (e.g. only 3 for a straight line), which is
 % sufficient to estimate the total arc length, but not the arc length
-% distribution as function of the spline parameter t [0,1].
-spline.discrete.ts = 0:0.01:1;
+% distribution as function of the spline parameter t [0,1]. Hence a fixed
+% sampling interval is used:
+spline.discrete.ts = 0:0.02:1;
 for i=1:length(spline.discrete.ts)-1
     ds = norm(trajectory_evaluateBezier(spline, spline.discrete.ts(i)) - trajectory_evaluateBezier(spline, spline.discrete.ts(i+1)));
     spline.discrete.arclength = [spline.discrete.arclength spline.discrete.arclength(end) + ds];

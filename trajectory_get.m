@@ -19,7 +19,7 @@ for i=1:length(traj.splines)
 end
 
 if isempty(spline)
-    error([mfilename '>> Given arc length exceeds the maximum arc length of this trajectory, returning end point'])
+    error([mfilename '>> Given arc length ' num2str(s) ' exceeds the maximum arc length of this trajectory, aborting'])
     spline = traj.splines{end};
     sLocal = spline.discrete.arclength(end);
 end

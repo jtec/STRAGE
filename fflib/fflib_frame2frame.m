@@ -8,7 +8,7 @@
 %
 % Application example: let frame A be the NED frame, frame B an aircraft's
 % body frame; you could use this function to convert the position of the
-% pilot in the body frame to the NED frame by calling it function as
+% pilot in the body frame to the NED frame by calling this function as
 % follows:
 % pPilot_NED = frame2frame(pPilot_bodyframe, pAircraft_NED, qAttitudeAircraft_NED);
 %
