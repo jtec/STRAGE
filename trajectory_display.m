@@ -69,13 +69,13 @@ if optionisset(options, 'firstderivativevisible') || optionisset(options, 'secon
     
     if optionisset(options, 'curvaturevectorvisible')
         quiver3(p(:, 1),p(:, 2),p(:, 3),Kappa(:, 1),Kappa(:, 2),Kappa(:, 3))
-    end    
+    end
     xlabel 'x'
     ylabel 'y'
     zlabel 'z'
     
     axs = ['x', 'y', 'z'];
-            
+    
     % Optional: Plot curvature:
     if optionisset(options, 'plotcurvatureseparately')
         % Compute curvature:
@@ -110,6 +110,12 @@ end
 
 
 plotbrowser on;
+
+figure(mainfigure);
+xlabel 'x';
+ylabel 'y';
+zlabel 'z';
+grid on;
 
     function result = optionisset(options, field)
         result = false;

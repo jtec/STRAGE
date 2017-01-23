@@ -61,7 +61,7 @@ gapless = {};
 % Check for gap between the first waypoint and the first control point
 % of the first spline:
 if length(traj.waypoints) > 2
-    distance = norm(traj.splines{i}.p1 - traj.waypoints{1});
+    distance = norm(traj.splines{1}.p1 - traj.waypoints{1});
     if distance > traj.resolution
         startpoint = traj.waypoints{1};
         endpoint = traj.splines{1}.p1;
@@ -161,9 +161,10 @@ end
             [s1, s2] = buildSegment(p1, p2, p3, c2max(ic2max));
             segment.splines{1} = s1;
             segment.splines{2} = s2;
-            deltalift(ic2max) = getLiftForceDelta(segment);
+            % deltalift(ic2max) = getLiftForceDelta(segment);
         end
         bp = 0;
+        
         function deltaLiftForce = getLiftForceDelta(seg)
             env = envelope;
             % Sample splines, compute forces for each sample,
